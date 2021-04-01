@@ -2,16 +2,20 @@ import {
   Api,
   JsonRpc,
   JsSignatureProvider,
-  Serialize,
+  Serialize
 } from "@protonprotocol/protonjs";
 import fetch from "node-fetch";
 import {
-  ENDPOINTS,
-  PRIVATE_KEYS,
   BOTS_ACCOUNTS,
   BOTS_CONFIG,
-  LENDING_CONTRACT,
+  ENDPOINTS,
+
+  PRIVATE_KEYS
 } from "./constants";
+import {
+  findLiquidation,
+  performLiquidation
+} from "./liquidation";
 import { fetchAllBorrowers } from "./users";
 
 const rpc = new JsonRpc(ENDPOINTS, { fetch: fetch });
@@ -24,26 +28,23 @@ const wait = async (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 const process = async (authorization: Serialize.Authorization) => {
-  const users = await fetchAllBorrowers(api)
-  console.log(JSON.stringify(users))
-  const actions = [
-    {
-      account: LENDING_CONTRACT,
-      authorization,
-      name: "feed",
-      data: {},
-    },
-  ];
-
   try {
-    const result = await api.transact(
-      { actions },
-      {
-        useLastIrreversible: true,
-        expireSeconds: 400,
-      }
+    const users = await fetchAllBorrowers(api);
+    console.log(JSON.stringify(users));
+    const result = await findLiquidation(api)(users, authorization);
+    if (!result) return;
+
+    const { user, debtExtAsset, seizeSymbol } = result;
+    await performLiquidation(api)(
+      user,
+      debtExtAsset,
+      seizeSymbol,
+      authorization
     );
-    return result;
+    console.log(`Liquidated ${user} for ${seizeSymbol} (using ~${debtExtAsset.quantity})`)
+
+    // const result = await sendTransaction(api)(actions);
+    // return result;
   } catch (err) {
     console.error(err);
   }

@@ -1,6 +1,6 @@
 # Proton Liquidation Server
 
-Liquidates users for Proton's lending protocol.
+Liquidates under-collateralized users of Proton's lending protocol.
 
 1. Install npm and nodejs:
 
