@@ -22,12 +22,12 @@ npm i && npm run build
 
 4. Rename .example.env to .env and set private key
 5. Edit testnet.config.js and mainnet.config.js with your accounts and endpoints
-6. Run oracle
+6. Run liquidation bot
 
 ```sh
 # Testnet
 pm2 start testnet.config.js
 
 # Mainnet
-pm2 start testnet.config.js
+pm2 start mainnet.config.js
 ```
