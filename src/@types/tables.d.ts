@@ -1,6 +1,6 @@
-import BigNumber from 'bignumber.js'
+import BigNumber from "bignumber.js";
 
-export type TEosioMap<Key, Value> = {
+export type TEosioMapEntry<Key, Value> = {
   key: Key;
   value: Value;
 };
@@ -15,26 +15,31 @@ export type TAsset = {
   symbol: TAssetSymbol;
 };
 
-export type TExtendedSymbol = {
-  sym: string;
-  contract: string;
-};
 export type TExtendedAsset = {
   amount: BigNumber;
   extSymbol: TExtendedSymbol;
 };
-// serialized as EOSIO does it
-export type TExtendedSymbolEosio = {
+export type TExtendedSymbol = {
   sym: TAssetSymbol;
   contract: string;
 };
-// serialized as EOSIO does it
-export type TExtendedAssetEosio = {
-  quantity: string;
+// how eosjs serializes this
+export type TExtendedSymbolEosio = {
+  sym: string;
   contract: string;
 };
 
+export type TShareRow = {
+  account: string;
+  tokens: TEosioMapEntry<TExtendedSymbolEosio, number>[];
+};
+
+type TBorrowSnapshotRow = any;
 export type TBorrowRow = {
   account: string;
-  tokens: TEosioMap<TExtendedSymbol, number>[];
+  tokens: TEosioMapEntry<TExtendedSymbolEosio, TBorrowSnapshot>[];
+};
+
+export type TAccountsRow = {
+  balance: string;
 };

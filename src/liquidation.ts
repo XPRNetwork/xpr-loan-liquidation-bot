@@ -1,8 +1,9 @@
 import { Api, Serialize } from "@protonprotocol/protonjs";
 import chunkFn from "lodash/chunk";
-import { TExtendedAsset, TExtendedAssetEosio } from "./@types/tables";
-import { decomposeAsset, formatAsset } from "./asset";
+import { TExtendedAsset } from "./@types/tables";
+import { decomposeAsset, extAsset2asset, formatAsset } from "./asset";
 import { LENDING_CONTRACT } from "./constants";
+import { fetchBalance, fetchShares } from "./tables";
 import { sendTransaction } from "./transaction";
 
 export const findLiquidation = (api: Api) => async (
@@ -10,7 +11,7 @@ export const findLiquidation = (api: Api) => async (
   authorization: Serialize.Authorization
 ): Promise<{
   user: string;
-  debtExtAsset: TExtendedAssetEosio;
+  debtExtAsset: TExtendedAsset;
   seizeSymbol: string;
 } | null> => {
   // call the check-liquidation action which accruess all debt and checks each user
@@ -30,7 +31,6 @@ export const findLiquidation = (api: Api) => async (
       await sendTransaction(api)(actions);
     } catch (error) {
       // try to parse error
-      console.error(`{findLiquidation}: ${error.message}`);
       const message: string = error ? error.message : ``;
       const [, memo] = message.split(`{find_liquidation}: `);
       if (!memo) {
@@ -44,23 +44,19 @@ export const findLiquidation = (api: Api) => async (
         debtExtSymbol,
         seizeSymbolCode,
       ] = memo.split(` `);
-      console.log(
-        `status: ${status}`,
-        user,
-        debtAmount,
-        debtExtSymbol,
-        seizeSymbolCode
-      );
       if (status === `found`) {
         // just use the recommendation from the smart contract which returns
         // the highest debt asset + highest collateral asset
         // more sophisticated methods would also check if liquidator has
         // enough balance for this
         const [debtSymbol, debtContract] = debtExtSymbol.split(`@`);
-        const debtQuantity = `${debtAmount} ${debtSymbol}`;
+        const debtAsset = decomposeAsset(`${debtAmount} ${debtSymbol}`);
         return {
           user,
-          debtExtAsset: { quantity: debtQuantity, contract: debtContract },
+          debtExtAsset: {
+            amount: debtAsset.amount,
+            extSymbol: { contract: debtContract, sym: debtAsset.symbol },
+          },
           seizeSymbol: seizeSymbolCode,
         };
       }
@@ -72,25 +68,76 @@ export const findLiquidation = (api: Api) => async (
 
 export const performLiquidation = (api: Api) => async (
   user: string,
-  debtExtAsset: TExtendedAssetEosio,
+  debtExtAsset: TExtendedAsset,
   seizeSymbol: string,
   authorization: Serialize.Authorization
 ): Promise<void> => {
   // adjust the max debtExtAsset quantity because it's right at the threshold
-  const asset = decomposeAsset(debtExtAsset.quantity);
-  const adjustedQuantity = formatAsset({
-    amount: asset.amount.times(99).div(100),
-    symbol: asset.symbol,
-  });
+  const adjustedAsset = {
+    amount: debtExtAsset.amount.times(99).div(100),
+    symbol: debtExtAsset.extSymbol.sym,
+  };
+
+  // redeem if we own shares of this underlying
+  // as bot ends up with lots of seized collateral
+  const shares = await fetchShares(api)(authorization.actor);
+  const share = shares.find(
+    (s) => s.extSymbol.sym.code === `L${debtExtAsset.extSymbol.sym.code}`
+  );
+  if (share && share.amount.isGreaterThan(`0`)) {
+    console.log(`share`, formatAsset(extAsset2asset(share)));
+    // redeem could fail due to no available liquidity
+    try {
+      await sendTransaction(api)([
+        {
+          account: LENDING_CONTRACT,
+          authorization: [authorization],
+          name: "redeem",
+          data: {
+            redeemer: authorization.actor,
+            token: {
+              quantity: formatAsset({
+                amount: share.amount,
+                symbol: share.extSymbol.sym,
+              }),
+              contract: share.extSymbol.contract,
+            },
+          },
+        },
+      ]);
+    } catch (error) {
+      console.warn(`Redeem failed`, error.message);
+    }
+  }
+
+  const ownUnderlyingBalance = await fetchBalance(api)(
+    authorization.actor,
+    debtExtAsset.extSymbol
+  );
+  console.log(
+    `ownUnderlyingBalance`,
+    formatAsset(extAsset2asset(ownUnderlyingBalance))
+  );
+  // cap amount to repay to own balance
+  if (adjustedAsset.amount.isGreaterThan(ownUnderlyingBalance.amount)) {
+    adjustedAsset.amount = ownUnderlyingBalance.amount;
+  }
+  console.log(`repaying`, formatAsset(adjustedAsset));
+  if (adjustedAsset.amount.isZero()) {
+    throw new Error(
+      `Bot does not have any tokens to repay: ${formatAsset(adjustedAsset)}`
+    );
+  }
+
   const actions = [
     {
-      account: debtExtAsset.contract,
+      account: debtExtAsset.extSymbol.contract,
       authorization: [authorization],
       name: "transfer",
       data: {
         from: authorization.actor,
         to: LENDING_CONTRACT,
-        quantity: adjustedQuantity,
+        quantity: formatAsset(adjustedAsset),
         memo: `liquidate,${user},${seizeSymbol}`,
       },
     },
