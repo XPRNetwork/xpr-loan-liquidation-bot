@@ -71,7 +71,7 @@ export const performLiquidation = (api: Api) => async (
   debtExtAsset: TExtendedAsset,
   seizeSymbol: string,
   authorization: Serialize.Authorization
-): Promise<void> => {
+) => {
   // adjust the max debtExtAsset quantity because it's right at the threshold
   const adjustedAsset = {
     amount: debtExtAsset.amount.times(99).div(100),
@@ -87,26 +87,35 @@ export const performLiquidation = (api: Api) => async (
   if (share && share.amount.isGreaterThan(`0`)) {
     console.log(`share`, formatAsset(extAsset2asset(share)));
     // redeem could fail due to no available liquidity
-    try {
-      await sendTransaction(api)([
-        {
-          account: LENDING_CONTRACT,
-          authorization: [authorization],
-          name: "redeem",
-          data: {
-            redeemer: authorization.actor,
-            token: {
-              quantity: formatAsset({
-                amount: share.amount,
-                symbol: share.extSymbol.sym,
-              }),
-              contract: share.extSymbol.contract,
+    for(let i = 0; i < 10; i++){
+      try {
+        const quantity = formatAsset({
+          amount: share.amount.div(Math.pow(2, i)),
+          symbol: share.extSymbol.sym,
+        })
+        await sendTransaction(api)([
+          {
+            account: LENDING_CONTRACT,
+            authorization: [authorization],
+            name: "redeem",
+            data: {
+              redeemer: authorization.actor,
+              token: {
+                quantity: quantity,
+                contract: share.extSymbol.contract,
+              },
             },
           },
-        },
-      ]);
-    } catch (error) {
-      console.warn(`Redeem failed`, error.message);
+        ]);
+        console.log(`Redeemed ${quantity}`)
+        break;
+      } catch (error) {
+        if(!/assertion failure with message: not enough available/.test(error.message)) {
+          console.warn(`Redeem failed:`, error.message);
+          break;
+        }
+        // otherwise try again with less to redeem
+      }
     }
   }
 

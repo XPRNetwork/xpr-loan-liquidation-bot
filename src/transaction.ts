@@ -2,7 +2,7 @@ import { Api, JsonRpc, Serialize } from "@protonprotocol/protonjs";
 
 export const sendTransaction = (api: Api) => async (
   actions: Serialize.Action[]
-) => {
+): Promise<{ transaction_id: string; processed: any }> => {
   // console.log(JSON.stringify(actions, null, 2))
   try {
     const result = await api.transact(

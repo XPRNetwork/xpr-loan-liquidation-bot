@@ -49,7 +49,7 @@ const process = async (authorization: Serialize.Authorization) => {
       `Liquidated ${user} for ${seizeSymbol} (using ~${formatAsset(
         extAsset2asset(debtExtAsset)
       )})`,
-      JSON.stringify(txResult)
+      txResult.transaction_id
     );
 
     // const result = await sendTransaction(api)(actions);
