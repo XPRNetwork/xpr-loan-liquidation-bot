@@ -11,6 +11,8 @@ import {
   BOTS_CONFIG,
   ENDPOINTS,
   PRIVATE_KEYS,
+  TELEGRAM_BOT_TOKEN,
+  TELEGRAM_CHAT_ID
 } from "./constants";
 import { findLiquidation, performLiquidation } from "./liquidation";
 import {
@@ -45,12 +47,18 @@ const process = async (authorization: Serialize.Authorization) => {
       seizeSymbol,
       authorization
     );
+    const liquidationInfo = `Liquidated ${user} for ${seizeSymbol} (using ~${formatAsset(
+      extAsset2asset(debtExtAsset)
+    )})`
     console.log(
-      `Liquidated ${user} for ${seizeSymbol} (using ~${formatAsset(
-        extAsset2asset(debtExtAsset)
-      )})`,
+      liquidationInfo,
       txResult.transaction_id
     );
+
+    if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHAT_ID}&text=${liquidationInfo}`);
+    const body = await response.json();
+    }
 
     // const result = await sendTransaction(api)(actions);
     // return result;

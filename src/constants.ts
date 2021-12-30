@@ -30,6 +30,14 @@ if (!process.env.ACCOUNTS) {
   console.error("No ACCOUNTS provided");
   process.exit(0);
 }
+export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+export const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
+  console.warn(
+    "No TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID provided in .env"
+  );
+}
 for (const accountPermission of process.env.ACCOUNTS.split(",")) {
   let [actor, permission] = accountPermission.split("@");
   if (!actor) {
