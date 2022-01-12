@@ -28,8 +28,7 @@ const api = new Api({
   signatureProvider: new JsSignatureProvider(PRIVATE_KEYS as any),
 });
 
-const wait = async (ms: number) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+const wait = async (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const process = async (authorization: Serialize.Authorization) => {
   try {
@@ -37,7 +36,6 @@ const process = async (authorization: Serialize.Authorization) => {
       (user) => user !== authorization.actor
     );
     const result = await findLiquidation(api)(users, authorization);
-
     if (!result) return;
 
     const { user, debtExtAsset, seizeSymbol } = result;
@@ -56,8 +54,8 @@ const process = async (authorization: Serialize.Authorization) => {
     );
 
     if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
-    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHAT_ID}&text=${liquidationInfo}`);
-    const body = await response.json();
+      const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHAT_ID}&text=${liquidationInfo}`);
+      const body = await response.json();
     }
 
     // const result = await sendTransaction(api)(actions);

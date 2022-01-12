@@ -3,7 +3,7 @@ import chunkFn from "lodash/chunk";
 import { TExtendedAsset } from "./@types/tables";
 import { decomposeAsset, extAsset2asset, formatAsset } from "./asset";
 import { LENDING_CONTRACT } from "./constants";
-import { fetchBalance, fetchShares } from "./tables";
+import { fetchBalance, fetchMarkets, fetchShares } from "./tables";
 import { sendTransaction } from "./transaction";
 
 export const findLiquidation = (api: Api) => async (
@@ -66,6 +66,45 @@ export const findLiquidation = (api: Api) => async (
   return null;
 };
 
+export const redeemShare = (api: Api) => async (
+  share: TExtendedAsset,
+  authorization: Serialize.Authorization
+) => {
+  console.log(`share`, formatAsset(extAsset2asset(share)));
+
+  // redeem could fail due to no available liquidity
+  for(let i = 0; i < 10; i++){
+    try {
+      const quantity = formatAsset({
+        amount: share.amount.div(Math.pow(2, i)),
+        symbol: share.extSymbol.sym,
+      })
+      await sendTransaction(api)([
+        {
+          account: LENDING_CONTRACT,
+          authorization: [authorization],
+          name: "redeem",
+          data: {
+            redeemer: authorization.actor,
+            token: {
+              quantity: quantity,
+              contract: share.extSymbol.contract,
+            },
+          },
+        },
+      ]);
+      console.log(`Redeemed ${quantity}`)
+      break;
+    } catch (error) {
+      if(!/assertion failure with message: not enough available/.test(error.message)) {
+        console.warn(`Redeem failed:`, error.message);
+        break;
+      }
+      // otherwise try again with less to redeem
+    }
+  }
+}
+
 export const performLiquidation = (api: Api) => async (
   user: string,
   debtExtAsset: TExtendedAsset,
@@ -78,64 +117,35 @@ export const performLiquidation = (api: Api) => async (
     symbol: debtExtAsset.extSymbol.sym,
   };
 
+  // Fetch markets
+  const markets = await fetchMarkets(api)()
+  const market = markets.find(
+    market => market.underlying_symbol.sym.code === debtExtAsset.extSymbol.sym.code &&
+              market.underlying_symbol.sym.precision === debtExtAsset.extSymbol.sym.precision &&
+              market.underlying_symbol.contract === debtExtAsset.extSymbol.contract
+  )
+  if (!market) {
+    throw new Error('Market not found')
+  }
+
   // redeem if we own shares of this underlying
   // as bot ends up with lots of seized collateral
   const shares = await fetchShares(api)(authorization.actor);
-  const share = shares.find(
-    (s) => s.extSymbol.sym.code === `L${debtExtAsset.extSymbol.sym.code}`
-  );
+  const share = shares.find(s => s.extSymbol.sym.code === market.share_symbol.sym.split(',')[1])
   if (share && share.amount.isGreaterThan(`0`)) {
-    console.log(`share`, formatAsset(extAsset2asset(share)));
-    // redeem could fail due to no available liquidity
-    for(let i = 0; i < 10; i++){
-      try {
-        const quantity = formatAsset({
-          amount: share.amount.div(Math.pow(2, i)),
-          symbol: share.extSymbol.sym,
-        })
-        await sendTransaction(api)([
-          {
-            account: LENDING_CONTRACT,
-            authorization: [authorization],
-            name: "redeem",
-            data: {
-              redeemer: authorization.actor,
-              token: {
-                quantity: quantity,
-                contract: share.extSymbol.contract,
-              },
-            },
-          },
-        ]);
-        console.log(`Redeemed ${quantity}`)
-        break;
-      } catch (error) {
-        if(!/assertion failure with message: not enough available/.test(error.message)) {
-          console.warn(`Redeem failed:`, error.message);
-          break;
-        }
-        // otherwise try again with less to redeem
-      }
-    }
+    await redeemShare(api)(share, authorization)
   }
 
-  const ownUnderlyingBalance = await fetchBalance(api)(
-    authorization.actor,
-    debtExtAsset.extSymbol
-  );
-  console.log(
-    `ownUnderlyingBalance`,
-    formatAsset(extAsset2asset(ownUnderlyingBalance))
-  );
+  const ownUnderlyingBalance = await fetchBalance(api)(authorization.actor, debtExtAsset.extSymbol);
+  console.log(`ownUnderlyingBalance`, formatAsset(extAsset2asset(ownUnderlyingBalance)));
+
   // cap amount to repay to own balance
   if (adjustedAsset.amount.isGreaterThan(ownUnderlyingBalance.amount)) {
     adjustedAsset.amount = ownUnderlyingBalance.amount;
   }
   console.log(`repaying`, formatAsset(adjustedAsset));
   if (adjustedAsset.amount.isZero()) {
-    throw new Error(
-      `Bot does not have any tokens to repay: ${formatAsset(adjustedAsset)}`
-    );
+    throw new Error(`Bot does not have any tokens to repay: ${formatAsset(adjustedAsset)}`);
   }
 
   const actions = [
@@ -146,7 +156,7 @@ export const performLiquidation = (api: Api) => async (
       data: {
         payer: authorization.actor,
         user: authorization.actor,
-        markets: [seizeSymbol],
+        markets: [market.share_symbol.sym.code, seizeSymbol],
       }
     },
     {
