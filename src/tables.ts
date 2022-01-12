@@ -6,6 +6,7 @@ import {
   TExtendedAsset,
   TExtendedSymbol,
   TExtendedSymbolEosio,
+  TMarketRow,
   TShareRow,
 } from "./@types/tables";
 import { LENDING_CONTRACT } from "./constants";
@@ -48,6 +49,36 @@ export const fetchShares = (api: Api) => async (
         },
         contract: entry.key.contract,
       },
+    };
+  });
+};
+
+export const fetchMarkets = (api: Api) => async (): Promise<any[]> => {
+  const rows = await fetchAllRows(api.rpc)<TMarketRow>({
+    code: LENDING_CONTRACT,
+    scope: LENDING_CONTRACT,
+    table: `markets`,
+  });
+
+  if (!rows) return [];
+
+  return rows.map((row) => {
+    return {
+      ...row,
+      share_symbol: {
+        sym: {
+          code: row.share_symbol.sym.split(`,`)[1],
+          precision: Number.parseInt(row.share_symbol.sym.split(` `)[0]),
+        },
+        contract: row.share_symbol.contract,
+      },
+      underlying_symbol: {
+        sym: {
+          code: row.underlying_symbol.sym.split(`,`)[1],
+          precision: Number.parseInt(row.underlying_symbol.sym.split(` `)[0]),
+        },
+        contract: row.underlying_symbol.contract,
+      }
     };
   });
 };

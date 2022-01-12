@@ -3,8 +3,7 @@ const endpoints = [
   "https://testnet.proton.pink.gg"
 ]
 const accounts = [
-  'liquidator11@active',
-  // 'liquidator12@active',
+  'otctest@active',
 ]
 
 module.exports = {

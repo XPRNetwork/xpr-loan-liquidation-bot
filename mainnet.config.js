@@ -4,11 +4,9 @@ const endpoints = [
   "https://proton.cryptolions.io",
   "https://proton.pink.gg"
 ]
+
 const accounts = [
-  'bot1@active',
-  'bot2@active',
-  'bot3@active' ,
-  'bot4@active'
+  'otctest@active',
 ]
 
 module.exports = {
@@ -22,6 +20,7 @@ module.exports = {
           'CHAIN': 'proton',
           'ENDPOINTS': endpoints.join(','),
           'ACCOUNTS': accounts.join(','),
+          "LENDING_CONTRACT": 'lending.loan'
         }
       }
     ]

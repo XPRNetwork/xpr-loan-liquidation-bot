@@ -34,6 +34,25 @@ export type TShareRow = {
   tokens: TEosioMapEntry<TExtendedSymbolEosio, number>[];
 };
 
+export type TMarketRow = {
+  share_symbol: TExtendedSymbolEosio;
+  underlying_symbol: TExtendedSymbolEosio;
+  variable_interest_model: any;
+  stable_interest_model: any;
+  collateral_factor: number;
+  reserve_factor: number;
+  borrow_index: number;
+  average_stable_rate: number;
+  stable_loans_enabled: boolean;
+  max_stable_borrow_percentage: number;
+  variable_accrual_time: string;
+  stable_accrual_time: string;
+  total_variable_borrows: any;
+  total_stable_borrows: any;
+  total_reserves: any;
+  oracle_feed_index: number;
+};
+
 type TBorrowSnapshotRow = any;
 export type TBorrowRow = {
   account: string;
