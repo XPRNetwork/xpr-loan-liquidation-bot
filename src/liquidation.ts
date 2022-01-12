@@ -1,21 +1,19 @@
 import { Api, Serialize } from "@protonprotocol/protonjs";
 import chunkFn from "lodash/chunk";
-import { TExtendedAsset } from "./@types/tables";
+import { Liquidation, TExtendedAsset } from "./@types/tables";
 import { decomposeAsset, extAsset2asset, formatAsset } from "./asset";
 import { LENDING_CONTRACT } from "./constants";
 import { fetchBalance, fetchMarkets, fetchShares } from "./tables";
 import { sendTransaction } from "./transaction";
 
-export const findLiquidation = (api: Api) => async (
+export const findLiquidations = (api: Api) => async (
   accounts: string[],
   authorization: Serialize.Authorization
-): Promise<{
-  user: string;
-  debtExtAsset: TExtendedAsset;
-  seizeSymbol: string;
-} | null> => {
+): Promise<Liquidation[]> => {
   // call the check-liquidation action which accruess all debt and checks each user
   const chunks = chunkFn(accounts, 100); // TODO: adjust this chunk size if timing out
+  const liquidations = []
+
   for (const chunk of chunks) {
     const actions = [
       {
@@ -27,6 +25,7 @@ export const findLiquidation = (api: Api) => async (
         },
       },
     ];
+
     try {
       await sendTransaction(api)(actions);
     } catch (error) {
@@ -37,6 +36,7 @@ export const findLiquidation = (api: Api) => async (
         // unknown RPC error, we should always be able to get an assertion error
         throw error;
       }
+
       const [
         status,
         user,
@@ -44,6 +44,7 @@ export const findLiquidation = (api: Api) => async (
         debtExtSymbol,
         seizeSymbolCode,
       ] = memo.split(` `);
+
       if (status === `found`) {
         // just use the recommendation from the smart contract which returns
         // the highest debt asset + highest collateral asset
@@ -51,20 +52,23 @@ export const findLiquidation = (api: Api) => async (
         // enough balance for this
         const [debtSymbol, debtContract] = debtExtSymbol.split(`@`);
         const debtAsset = decomposeAsset(`${debtAmount} ${debtSymbol}`);
-        return {
+
+        liquidations.push({
           user,
           debtExtAsset: {
             amount: debtAsset.amount,
-            extSymbol: { contract: debtContract, sym: debtAsset.symbol },
+            extSymbol: { contract: debtContract, sym: { code: debtAsset.symbol.code, precision: debtAsset.symbol.precision }},
           },
           seizeSymbol: seizeSymbolCode,
-        };
+        });
       }
       // otherwise continue the loop for the next chunk
     }
   }
-  return null;
+
+  return liquidations;
 };
+
 
 export const redeemShare = (api: Api) => async (
   share: TExtendedAsset,
