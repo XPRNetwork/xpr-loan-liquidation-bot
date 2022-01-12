@@ -5,6 +5,7 @@ import {
   Serialize,
 } from "@protonprotocol/protonjs";
 import fetch from "node-fetch";
+import { Liquidation } from "./@types/tables";
 import { formatAsset, extAsset2asset } from "./asset";
 import {
   BOTS_ACCOUNTS,
@@ -14,13 +15,8 @@ import {
   TELEGRAM_BOT_TOKEN,
   TELEGRAM_CHAT_ID
 } from "./constants";
-import { findLiquidation, performLiquidation } from "./liquidation";
-import {
-  fetchAllBorrowers,
-  fetchShares,
-  getMapValue,
-  fetchBalance,
-} from "./tables";
+import { findLiquidations, performLiquidation } from "./liquidation";
+import { fetchAllBorrowers } from "./tables";
 
 const rpc = new JsonRpc(ENDPOINTS, { fetch: fetch });
 const api = new Api({
@@ -31,37 +27,41 @@ const api = new Api({
 const wait = async (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const process = async (authorization: Serialize.Authorization) => {
+  let liquidations: Liquidation[] = []
+  
   try {
-    const users = (await fetchAllBorrowers(api)).filter(
-      (user) => user !== authorization.actor
-    );
-    const result = await findLiquidation(api)(users, authorization);
-    if (!result) return;
+    const borrowers = await fetchAllBorrowers(api)
+    const users = borrowers.filter((user) => user !== authorization.actor);
 
-    const { user, debtExtAsset, seizeSymbol } = result;
-    const txResult = await performLiquidation(api)(
-      user,
-      debtExtAsset,
-      seizeSymbol,
-      authorization
-    );
-    const liquidationInfo = `Liquidated ${user} for ${seizeSymbol} (using ~${formatAsset(
-      extAsset2asset(debtExtAsset)
-    )})`
-    console.log(
-      liquidationInfo,
-      txResult.transaction_id
-    );
+    liquidations = await findLiquidations(api)(users, authorization);
+  } catch (e) {
+    console.error('Error Performing Liquidation')
+    console.error(e);
+  }
 
-    if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
-      const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHAT_ID}&text=${liquidationInfo}`);
-      const body = await response.json();
+  for (const liquidation of liquidations) {
+    const { user, debtExtAsset, seizeSymbol } = liquidation;
+    try {
+      const txResult = await performLiquidation(api)(
+        user,
+        debtExtAsset,
+        seizeSymbol,
+        authorization
+      );
+      const liquidationInfo = `Liquidated ${user} for ${seizeSymbol} (using ~${formatAsset(extAsset2asset(debtExtAsset))})`
+      console.log(liquidationInfo, txResult.transaction_id);
+
+      if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+        const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHAT_ID}&text=${liquidationInfo}`);
+        const body = await response.json();
+      }
+
+      // const result = await sendTransaction(api)(actions);
+      // return result;
+    } catch (e) {
+      console.error('Error Performing Liquidation')
+      console.error(e)
     }
-
-    // const result = await sendTransaction(api)(actions);
-    // return result;
-  } catch (err) {
-    console.error(err);
   }
 };
 
