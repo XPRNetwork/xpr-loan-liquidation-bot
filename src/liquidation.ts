@@ -140,6 +140,16 @@ export const performLiquidation = (api: Api) => async (
 
   const actions = [
     {
+      account: LENDING_CONTRACT,
+      authorization: [authorization],
+      name: 'entermarkets',
+      data: {
+        payer: authorization.actor,
+        user: authorization.actor,
+        markets: [seizeSymbol],
+      }
+    },
+    {
       account: debtExtAsset.extSymbol.contract,
       authorization: [authorization],
       name: "transfer",
@@ -151,5 +161,6 @@ export const performLiquidation = (api: Api) => async (
       },
     },
   ];
+  console.dir(actions, { depth: null })
   return await sendTransaction(api)(actions);
 };
