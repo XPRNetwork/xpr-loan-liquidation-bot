@@ -171,6 +171,6 @@ export const performLiquidation = (api: Api) => async (
       },
     },
   ];
-  console.dir(actions, { depth: null })
+  //console.dir(actions, { depth: null })
   return await sendTransaction(api)(actions);
 };
