@@ -131,7 +131,7 @@ export const performLiquidation = (api: Api) => async (
   // redeem if we own shares of this underlying
   // as bot ends up with lots of seized collateral
   const shares = await fetchShares(api)(authorization.actor);
-  const share = shares.find(s => s.extSymbol.sym.code === market.share_symbol.sym.split(',')[1])
+  const share = shares.find(s => s.extSymbol.sym.code === market.share_symbol.sym.code)
   if (share && share.amount.isGreaterThan(`0`)) {
     await redeemShare(api)(share, authorization)
   }
