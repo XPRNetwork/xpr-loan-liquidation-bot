@@ -94,6 +94,7 @@ export function decomposeAsset(assetString: string): TAsset {
       },
     };
   } catch (error) {
+    console.error(assetString, error)
     throw new Error(
       `Invalid asset passed to decomposeAsset: ${JSON.stringify(
         assetString

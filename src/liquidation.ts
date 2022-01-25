@@ -100,6 +100,11 @@ export const redeemShare = (api: Api) => async (
       console.log(`Redeemed ${quantity}`)
       break;
     } catch (error) {
+      if (!error) {
+        console.error('No error found while redeeming')
+        break
+      }
+      
       if(!/assertion failure with message: not enough available/.test(error.message)) {
         console.warn(`Redeem failed:`, error.message);
         break;
