@@ -14,7 +14,7 @@ export const sendTransaction = (api: Api) => async (
     );
     return result;
   } catch (e) {
-    if (e.json && e.json.error && e.json.error.details) {
+    if (e.json && e.json.error && e.json.error.details && e.json.error.details.length) {
       throw new Error(e.json.error.details[0].message);
     } else {
       throw e;
