@@ -11,7 +11,7 @@ export const findLiquidations = (api: Api) => async (
   authorization: Serialize.Authorization
 ): Promise<Liquidation[]> => {
   // call the check-liquidation action which accruess all debt and checks each user
-  const chunks = chunkFn(accounts, 100); // TODO: adjust this chunk size if timing out
+  const chunks = chunkFn(accounts, 50); // TODO: adjust this chunk size if timing out
   const liquidations = []
 
   for (const chunk of chunks) {
