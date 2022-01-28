@@ -1,7 +1,7 @@
 const endpoints = [
-  "https://proton.eoscafeblock.com",
-  "https://proton.eosusa.news",
   "https://proton.cryptolions.io",
+  "https://proton.eosusa.news",
+  "https://proton.eoscafeblock.com",
   "https://proton.pink.gg"
 ]
 
