@@ -1,7 +1,7 @@
-import dotenv from 'dotenv'
+import dotenv from "dotenv";
 import { Serialize } from "@protonprotocol/protonjs";
 
-dotenv.config()
+dotenv.config();
 
 if (!process.env.CHAIN) {
   console.error("No CHAIN provided in *.config.js");
@@ -22,7 +22,7 @@ export const ENDPOINTS = process.env.ENDPOINTS.split(",");
 
 export const LENDING_CONTRACT = process.env.LENDING_CONTRACT || "lending";
 export const BOTS_CONFIG = {
-  waitTime: 30 * 1000,
+  waitTime: 30 * 1000
 };
 
 export const BOTS_ACCOUNTS: Serialize.Authorization[] = [];
@@ -34,9 +34,7 @@ export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 export const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
-  console.warn(
-    "No TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID provided in .env"
-  );
+  console.warn("No TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID provided in .env");
 }
 for (const accountPermission of process.env.ACCOUNTS.split(",")) {
   let [actor, permission] = accountPermission.split("@");

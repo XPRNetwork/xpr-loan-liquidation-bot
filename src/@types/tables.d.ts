@@ -67,4 +67,4 @@ export type Liquidation = {
   user: string;
   debtExtAsset: TExtendedAsset;
   seizeSymbol: string;
-}
+};

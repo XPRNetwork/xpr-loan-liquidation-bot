@@ -3,7 +3,7 @@ import {
   TAsset,
   TAssetSymbol,
   TExtendedAsset,
-  TExtendedSymbol,
+  TExtendedSymbol
 } from "./@types/tables";
 
 type FormatOptions = {
@@ -31,7 +31,7 @@ export function formatAsset(
   const options: FormatOptions = {
     withSymbol: true,
     separateThousands: false,
-    ...(formatOptions || {}),
+    ...(formatOptions || {})
   };
   const { precision, code } = symbol;
 
@@ -90,11 +90,11 @@ export function decomposeAsset(assetString: string): TAsset {
       amount: amountNoPrecision,
       symbol: {
         precision,
-        code: symbolName,
-      },
+        code: symbolName
+      }
     };
   } catch (error) {
-    console.error(assetString, error)
+    console.error(assetString, error);
     throw new Error(
       `Invalid asset passed to decomposeAsset: ${JSON.stringify(
         assetString
@@ -115,7 +115,7 @@ export const dec2asset = (val: number, symbol: TAssetSymbol): TAsset => {
   );
   return {
     amount,
-    symbol,
+    symbol
   };
 };
 
@@ -127,14 +127,14 @@ export const asset2extAsset = (
     amount: asset.amount,
     extSymbol: {
       sym: asset.symbol,
-      contract,
-    },
+      contract
+    }
   };
 };
 export const extAsset2asset = (extAsset: TExtendedAsset): TAsset => {
   return {
     amount: extAsset.amount,
-    symbol: extAsset.extSymbol.sym,
+    symbol: extAsset.extSymbol.sym
   };
 };
 

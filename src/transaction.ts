@@ -9,12 +9,17 @@ export const sendTransaction = (api: Api) => async (
       { actions },
       {
         useLastIrreversible: true,
-        expireSeconds: 400,
+        expireSeconds: 400
       }
     );
     return result;
   } catch (e) {
-    if (e.json && e.json.error && e.json.error.details && e.json.error.details.length) {
+    if (
+      e.json &&
+      e.json.error &&
+      e.json.error.details &&
+      e.json.error.details.length
+    ) {
       throw new Error(e.json.error.details[0].message);
     } else {
       throw e;
@@ -42,7 +47,7 @@ export const fetchAllRows = (rpc: JsonRpc) => async <T>(
   const mergedOptions = {
     json: true,
     limit: 9999,
-    ...options,
+    ...options
   };
 
   let rows: T[] = [];
@@ -51,7 +56,7 @@ export const fetchAllRows = (rpc: JsonRpc) => async <T>(
   for (let i = 0; i < MAX_PAGINATION_FETCHES; i += 1) {
     const result = await rpc.get_table_rows({
       ...mergedOptions,
-      lower_bound: lowerBound,
+      lower_bound: lowerBound
     });
     rows = rows.concat(result.rows);
 
