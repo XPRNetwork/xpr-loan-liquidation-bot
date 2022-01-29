@@ -7,7 +7,7 @@ import {
   TExtendedSymbol,
   TExtendedSymbolEosio,
   TMarketRow,
-  TShareRow,
+  TShareRow
 } from "./@types/tables";
 import { LENDING_CONTRACT } from "./constants";
 import { fetchAllRows } from "./transaction";
@@ -21,9 +21,9 @@ export const fetchAllBorrowers = async (api: Api) => {
   const rows = await fetchAllRows(api.rpc)<TBorrowSnapshotRow>({
     code: LENDING_CONTRACT,
     scope: LENDING_CONTRACT,
-    table: `borrows`,
+    table: `borrows`
   });
-  return rows.map((row) => row.account);
+  return rows.map(row => row.account);
 };
 
 export const fetchShares = (api: Api) => async (
@@ -35,20 +35,20 @@ export const fetchShares = (api: Api) => async (
     key_type: `name`,
     code: LENDING_CONTRACT,
     scope: LENDING_CONTRACT,
-    table: `shares`,
+    table: `shares`
   });
   if (!rows[0]) return [];
 
-  return rows[0].tokens.map((entry) => {
+  return rows[0].tokens.map(entry => {
     return {
       amount: new BigNumber(entry.value),
       extSymbol: {
         sym: {
           code: entry.key.sym.split(`,`)[1],
-          precision: Number.parseInt(entry.key.sym.split(` `)[0]),
+          precision: Number.parseInt(entry.key.sym.split(` `)[0])
         },
-        contract: entry.key.contract,
-      },
+        contract: entry.key.contract
+      }
     };
   });
 };
@@ -57,27 +57,27 @@ export const fetchMarkets = (api: Api) => async (): Promise<any[]> => {
   const rows = await fetchAllRows(api.rpc)<TMarketRow>({
     code: LENDING_CONTRACT,
     scope: LENDING_CONTRACT,
-    table: `markets`,
+    table: `markets`
   });
 
   if (!rows) return [];
 
-  return rows.map((row) => {
+  return rows.map(row => {
     return {
       ...row,
       share_symbol: {
         sym: {
           code: row.share_symbol.sym.split(`,`)[1],
-          precision: Number.parseInt(row.share_symbol.sym.split(` `)[0]),
+          precision: Number.parseInt(row.share_symbol.sym.split(` `)[0])
         },
-        contract: row.share_symbol.contract,
+        contract: row.share_symbol.contract
       },
       underlying_symbol: {
         sym: {
           code: row.underlying_symbol.sym.split(`,`)[1],
-          precision: Number.parseInt(row.underlying_symbol.sym.split(` `)[0]),
+          precision: Number.parseInt(row.underlying_symbol.sym.split(` `)[0])
         },
-        contract: row.underlying_symbol.contract,
+        contract: row.underlying_symbol.contract
       }
     };
   });
@@ -90,10 +90,10 @@ export const fetchBalance = (api: Api) => async (
   const rows = await fetchAllRows(api.rpc)<TAccountsRow>({
     code: extSymbol.contract,
     scope: user,
-    table: `accounts`,
+    table: `accounts`
   });
   const found = rows.find(
-    (row) => decomposeAsset(row.balance).symbol.code === extSymbol.sym.code
+    row => decomposeAsset(row.balance).symbol.code === extSymbol.sym.code
   );
 
   const quantity = found
@@ -101,7 +101,7 @@ export const fetchBalance = (api: Api) => async (
     : formatAsset({ amount: 0, symbol: extSymbol.sym });
   return {
     amount: decomposeAsset(quantity).amount,
-    extSymbol: extSymbol,
+    extSymbol: extSymbol
   };
 };
 
@@ -109,6 +109,6 @@ export const getMapValue = <K = any, V = any>(
   map: TEosioMapEntry<K, V>[],
   key: K
 ) => {
-  const found = map.find((entry) => _.isEqual(entry.key, key));
+  const found = map.find(entry => _.isEqual(entry.key, key));
   return found ? found.value : undefined;
 };

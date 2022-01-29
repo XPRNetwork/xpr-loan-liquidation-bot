@@ -12,7 +12,7 @@ export const findLiquidations = (api: Api) => async (
 ): Promise<Liquidation[]> => {
   // call the check-liquidation action which accruess all debt and checks each user
   const chunks = chunkFn(accounts, 50); // TODO: adjust this chunk size if timing out
-  const liquidations = []
+  const liquidations = [];
 
   for (const chunk of chunks) {
     const actions = [
@@ -21,9 +21,9 @@ export const findLiquidations = (api: Api) => async (
         authorization: [authorization],
         name: "findliq",
         data: {
-          borrowers: chunk,
-        },
-      },
+          borrowers: chunk
+        }
+      }
     ];
 
     try {
@@ -42,7 +42,7 @@ export const findLiquidations = (api: Api) => async (
         user,
         debtAmount,
         debtExtSymbol,
-        seizeSymbolCode,
+        seizeSymbolCode
       ] = memo.split(` `);
 
       if (status === `found`) {
@@ -57,9 +57,15 @@ export const findLiquidations = (api: Api) => async (
           user,
           debtExtAsset: {
             amount: debtAsset.amount,
-            extSymbol: { contract: debtContract, sym: { code: debtAsset.symbol.code, precision: debtAsset.symbol.precision }},
+            extSymbol: {
+              contract: debtContract,
+              sym: {
+                code: debtAsset.symbol.code,
+                precision: debtAsset.symbol.precision
+              }
+            }
           },
-          seizeSymbol: seizeSymbolCode,
+          seizeSymbol: seizeSymbolCode
         });
       }
       // otherwise continue the loop for the next chunk
@@ -69,7 +75,6 @@ export const findLiquidations = (api: Api) => async (
   return liquidations;
 };
 
-
 export const redeemShare = (api: Api) => async (
   share: TExtendedAsset,
   authorization: Serialize.Authorization
@@ -77,12 +82,12 @@ export const redeemShare = (api: Api) => async (
   console.log(`share`, formatAsset(extAsset2asset(share)));
 
   // redeem could fail due to no available liquidity
-  for(let i = 0; i < 10; i++){
+  for (let i = 0; i < 10; i++) {
     try {
       const quantity = formatAsset({
         amount: share.amount.div(Math.pow(2, i)),
-        symbol: share.extSymbol.sym,
-      })
+        symbol: share.extSymbol.sym
+      });
       await sendTransaction(api)([
         {
           account: LENDING_CONTRACT,
@@ -92,27 +97,31 @@ export const redeemShare = (api: Api) => async (
             redeemer: authorization.actor,
             token: {
               quantity: quantity,
-              contract: share.extSymbol.contract,
-            },
-          },
-        },
+              contract: share.extSymbol.contract
+            }
+          }
+        }
       ]);
-      console.log(`Redeemed ${quantity}`)
+      console.log(`Redeemed ${quantity}`);
       break;
     } catch (error) {
       if (!error) {
-        console.error('No error found while redeeming')
-        break
+        console.error("No error found while redeeming");
+        break;
       }
-      
-      if(!/assertion failure with message: not enough available/.test(error.message)) {
+
+      if (
+        !/assertion failure with message: not enough available/.test(
+          error.message
+        )
+      ) {
         console.warn(`Redeem failed:`, error.message);
         break;
       }
       // otherwise try again with less to redeem
     }
   }
-}
+};
 
 export const performLiquidation = (api: Api) => async (
   user: string,
@@ -123,30 +132,40 @@ export const performLiquidation = (api: Api) => async (
   // adjust the max debtExtAsset quantity because it's right at the threshold
   const adjustedAsset = {
     amount: debtExtAsset.amount.times(99).div(100),
-    symbol: debtExtAsset.extSymbol.sym,
+    symbol: debtExtAsset.extSymbol.sym
   };
 
   // Fetch markets
-  const markets = await fetchMarkets(api)()
+  const markets = await fetchMarkets(api)();
   const market = markets.find(
-    market => market.underlying_symbol.sym.code === debtExtAsset.extSymbol.sym.code &&
-              market.underlying_symbol.sym.precision === debtExtAsset.extSymbol.sym.precision &&
-              market.underlying_symbol.contract === debtExtAsset.extSymbol.contract
-  )
+    market =>
+      market.underlying_symbol.sym.code === debtExtAsset.extSymbol.sym.code &&
+      market.underlying_symbol.sym.precision ===
+        debtExtAsset.extSymbol.sym.precision &&
+      market.underlying_symbol.contract === debtExtAsset.extSymbol.contract
+  );
   if (!market) {
-    throw new Error('Market not found')
+    throw new Error("Market not found");
   }
 
   // redeem if we own shares of this underlying
   // as bot ends up with lots of seized collateral
   const shares = await fetchShares(api)(authorization.actor);
-  const share = shares.find(s => s.extSymbol.sym.code === market.share_symbol.sym.code)
+  const share = shares.find(
+    s => s.extSymbol.sym.code === market.share_symbol.sym.code
+  );
   if (share && share.amount.isGreaterThan(`0`)) {
-    await redeemShare(api)(share, authorization)
+    await redeemShare(api)(share, authorization);
   }
 
-  const ownUnderlyingBalance = await fetchBalance(api)(authorization.actor, debtExtAsset.extSymbol);
-  console.log(`ownUnderlyingBalance`, formatAsset(extAsset2asset(ownUnderlyingBalance)));
+  const ownUnderlyingBalance = await fetchBalance(api)(
+    authorization.actor,
+    debtExtAsset.extSymbol
+  );
+  console.log(
+    `ownUnderlyingBalance`,
+    formatAsset(extAsset2asset(ownUnderlyingBalance))
+  );
 
   // cap amount to repay to own balance
   if (adjustedAsset.amount.isGreaterThan(ownUnderlyingBalance.amount)) {
@@ -154,18 +173,20 @@ export const performLiquidation = (api: Api) => async (
   }
   console.log(`repaying`, formatAsset(adjustedAsset));
   if (adjustedAsset.amount.isZero()) {
-    throw new Error(`Bot does not have any tokens to repay: ${formatAsset(adjustedAsset)}`);
+    throw new Error(
+      `Bot does not have any tokens to repay: ${formatAsset(adjustedAsset)}`
+    );
   }
 
   const actions = [
     {
       account: LENDING_CONTRACT,
       authorization: [authorization],
-      name: 'entermarkets',
+      name: "entermarkets",
       data: {
         payer: authorization.actor,
         user: authorization.actor,
-        markets: [market.share_symbol.sym.code, seizeSymbol],
+        markets: [market.share_symbol.sym.code, seizeSymbol]
       }
     },
     {
@@ -176,9 +197,9 @@ export const performLiquidation = (api: Api) => async (
         from: authorization.actor,
         to: LENDING_CONTRACT,
         quantity: formatAsset(adjustedAsset),
-        memo: `liquidate,${user},${seizeSymbol}`,
-      },
-    },
+        memo: `liquidate,${user},${seizeSymbol}`
+      }
+    }
   ];
   //console.dir(actions, { depth: null })
   return await sendTransaction(api)(actions);
