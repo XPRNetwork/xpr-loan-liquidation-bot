@@ -22,7 +22,7 @@ export const ENDPOINTS = process.env.ENDPOINTS.split(",");
 
 export const LENDING_CONTRACT = process.env.LENDING_CONTRACT || "lending";
 export const BOTS_CONFIG = {
-  waitTime: 30 * 1000
+  waitTime: 10 * 1000
 };
 
 export const BOTS_ACCOUNTS: Serialize.Authorization[] = [];
