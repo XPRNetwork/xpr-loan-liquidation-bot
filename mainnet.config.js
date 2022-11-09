@@ -1,12 +1,12 @@
 const endpoints = [
-  "https://proton.cryptolions.io",
   "https://proton.eosusa.news",
-  "https://proton.eoscafeblock.com",
-  "https://proton.pink.gg"
+  "https://proton.cryptolions.io",
+  "https://proton.greymass.com",
+  "https://proton.eoscafeblock.com"
 ]
 
 const accounts = [
-  'otctest@active',
+  'liq@active',
 ]
 
 module.exports = {

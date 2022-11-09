@@ -5,6 +5,7 @@ import { decomposeAsset, extAsset2asset, formatAsset } from "./asset";
 import { LENDING_CONTRACT } from "./constants";
 import { fetchBalance, fetchMarkets, fetchShares } from "./tables";
 import { sendTransaction } from "./transaction";
+import BigNumber from "bignumber.js";
 
 export const findLiquidations = (api: Api) => async (
   accounts: string[],
@@ -53,20 +54,22 @@ export const findLiquidations = (api: Api) => async (
         const [debtSymbol, debtContract] = debtExtSymbol.split(`@`);
         const debtAsset = decomposeAsset(`${debtAmount} ${debtSymbol}`);
 
-        liquidations.push({
-          user,
-          debtExtAsset: {
-            amount: debtAsset.amount,
-            extSymbol: {
-              contract: debtContract,
-              sym: {
-                code: debtAsset.symbol.code,
-                precision: debtAsset.symbol.precision
+        if (debtAsset.amount.gt(0)) {
+          liquidations.push({
+            user,
+            debtExtAsset: {
+              amount: debtAsset.amount,
+              extSymbol: {
+                contract: debtContract,
+                sym: {
+                  code: debtAsset.symbol.code,
+                  precision: debtAsset.symbol.precision
+                }
               }
-            }
-          },
-          seizeSymbol: seizeSymbolCode
-        });
+            },
+            seizeSymbol: seizeSymbolCode
+          });
+        }
       }
       // otherwise continue the loop for the next chunk
     }
@@ -154,7 +157,7 @@ export const performLiquidation = (api: Api) => async (
   const share = shares.find(
     s => s.extSymbol.sym.code === market.share_symbol.sym.code
   );
-  if (share && share.amount.isGreaterThan(`0`)) {
+  if (share && share.amount.isGreaterThan(0)) {
     await redeemShare(api)(share, authorization);
   }
 
@@ -167,11 +170,12 @@ export const performLiquidation = (api: Api) => async (
     formatAsset(extAsset2asset(ownUnderlyingBalance))
   );
 
+  // Try atleast one
   // cap amount to repay to own balance
   if (adjustedAsset.amount.isGreaterThan(ownUnderlyingBalance.amount)) {
     adjustedAsset.amount = ownUnderlyingBalance.amount;
   }
-  console.log(`repaying`, formatAsset(adjustedAsset));
+  console.log(`repaying`, formatAsset(adjustedAsset), 'for', user);
   if (adjustedAsset.amount.isZero()) {
     throw new Error(
       `Bot does not have any tokens to repay: ${formatAsset(adjustedAsset)}`
