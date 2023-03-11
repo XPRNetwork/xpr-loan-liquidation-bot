@@ -1,8 +1,6 @@
 const endpoints = [
-  "https://proton.eosusa.news",
-  "https://proton.cryptolions.io",
-  "https://proton.greymass.com",
-  "https://proton.eoscafeblock.com"
+  "https://proton.eoscafeblock.com",
+  "https://proton.eosusa.io",
 ]
 
 const accounts = [
