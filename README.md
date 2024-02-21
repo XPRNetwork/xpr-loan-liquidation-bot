@@ -1,4 +1,4 @@
-# Proton Liquidation Server
+# Metal X Lending Liquidation Server
 
 Liquidates under-collateralized users of Proton's lending protocol.
 
