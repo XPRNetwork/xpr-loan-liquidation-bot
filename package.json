@@ -16,19 +16,15 @@
     "build": "tsup src/index.ts --format cjs --dts",
     "start:prod": "node dist/index.js",
     "lint": "tsc --noEmit",
-    "test": "echo \"No tests configured\"",
-    "size": "size-limit",
-    "analyze": "size-limit --why"
+    "test": "echo \"No tests configured\""
   },
-  "peerDependencies": {},
   "author": "Metallicus",
   "module": "dist/server.esm.js",
   "devDependencies": {
-    "@size-limit/preset-small-lib": "^11.0.0",
     "@types/lodash": "^4.17.0",
     "@types/node": "^22.0.0",
+    "esbuild": "^0.28.0",
     "husky": "^9.0.0",
-    "size-limit": "^11.0.0",
     "tslib": "^2.8.0",
     "tsup": "^8.0.0",
     "tsx": "^4.0.0",
