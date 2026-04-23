@@ -3,8 +3,7 @@ import {
   JsonRpc,
   JsSignatureProvider,
   Serialize
-} from "@protonprotocol/protonjs";
-import fetch from "node-fetch";
+} from "@proton/js";
 import { Liquidation } from "./@types/tables";
 import { formatAsset, extAsset2asset } from "./asset";
 import {
@@ -16,9 +15,10 @@ import {
   TELEGRAM_CHAT_ID
 } from "./constants";
 import { findLiquidations, performLiquidation } from "./liquidation";
+import { appendLog } from "./logger";
 import { fetchAllBorrowers } from "./tables";
 
-const rpc = new JsonRpc(ENDPOINTS, { fetch: fetch });
+const rpc = new JsonRpc(ENDPOINTS);
 const api = new Api({
   rpc,
   signatureProvider: new JsSignatureProvider(PRIVATE_KEYS as any)
@@ -35,13 +35,22 @@ const process = async (authorization: Serialize.Authorization) => {
     const users = borrowers.filter(user => user !== authorization.actor);
 
     liquidations = await findLiquidations(api)(users, authorization);
+
+    for (const liq of liquidations) {
+      appendLog(
+        "available-liquidations.log",
+        `user=${liq.user} debt=${formatAsset(extAsset2asset(liq.debtExtAsset))} seize=${liq.seizeSymbol} bot=${authorization.actor}`
+      );
+    }
   } catch (e) {
-    console.error("Error Performing Liquidation");
+    console.error("Error in fetching Liquidations");
     console.error(e);
   }
 
   for (const liquidation of liquidations) {
     const { user, debtExtAsset, seizeSymbol } = liquidation;
+    console.log(`Liquidation in progress`);
+    
     try {
       const txResult = await performLiquidation(api)(
         user,
@@ -53,6 +62,11 @@ const process = async (authorization: Serialize.Authorization) => {
         extAsset2asset(debtExtAsset)
       )})`;
       console.log(liquidationInfo, txResult.transaction_id);
+
+      appendLog(
+        "completed-liquidations.log",
+        `user=${user} debt=${formatAsset(extAsset2asset(debtExtAsset))} seize=${seizeSymbol} tx=${txResult.transaction_id} bot=${authorization.actor}`
+      );
 
       if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
         const response = await fetch(

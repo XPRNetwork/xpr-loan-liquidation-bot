@@ -1,4 +1,4 @@
-import { Api } from "@protonprotocol/protonjs";
+import { Api } from "@proton/js";
 import {
   TAccountsRow,
   TBorrowSnapshotRow,

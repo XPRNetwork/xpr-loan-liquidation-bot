@@ -1,9 +1,9 @@
 const endpoints = [
   "https://testnet.protonchain.com",
-  "https://testnet.proton.pink.gg"
+  "https://testnet-rpc.api.protondex.com"
 ]
 const accounts = [
-  'otctest@active',
+  'liquidator11@active',
 ]
 
 module.exports = {

@@ -1,10 +1,10 @@
 const endpoints = [
-  "https://proton.eoscafeblock.com",
+  "https://rpc.api.mainnet.metalx.com",
   "https://proton.eosusa.io",
 ]
 
 const accounts = [
-  'liq@active',
+  'liquidator11@active',
 ]
 
 module.exports = {
