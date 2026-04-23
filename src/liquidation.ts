@@ -1,4 +1,4 @@
-import { Api, Serialize } from "@protonprotocol/protonjs";
+import { Api, Serialize } from "@proton/js";
 import chunkFn from "lodash/chunk";
 import { Liquidation, TExtendedAsset } from "./@types/tables";
 import { decomposeAsset, extAsset2asset, formatAsset } from "./asset";

@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import { Serialize } from "@protonprotocol/protonjs";
+import { Serialize } from "@proton/js";
 
 dotenv.config();
 

@@ -1,9 +1,8 @@
-import { Api, JsonRpc, Serialize } from "@protonprotocol/protonjs";
+import { Api, Serialize } from "@proton/js";
 
 export const sendTransaction = (api: Api) => async (
   actions: Serialize.Action[]
 ): Promise<{ transaction_id: string; processed: any }> => {
-  // console.log(JSON.stringify(actions, null, 2))
   try {
     const result = await api.transact(
       { actions },
@@ -12,8 +11,8 @@ export const sendTransaction = (api: Api) => async (
         expireSeconds: 400
       }
     );
-    return result;
-  } catch (e) {
+    return result as { transaction_id: string; processed: any };
+  } catch (e: any) {
     if (
       e.json &&
       e.json.error &&
@@ -30,7 +29,7 @@ export const sendTransaction = (api: Api) => async (
 type GetTableRowsOptions = {
   json?: boolean;
   code?: string;
-  scope?: string;
+  scope?: string | number | null;
   table?: string;
   lower_bound?: number | string;
   upper_bound?: number | string;
@@ -40,34 +39,33 @@ type GetTableRowsOptions = {
   reverse?: boolean;
 };
 
-const MAX_PAGINATION_FETCHES = 20;
-export const fetchAllRows = (rpc: JsonRpc) => async <T>(
+interface RpcLike {
+  get_table_rows(options: any): Promise<{ rows: any[]; more: boolean; next_key?: string }>;
+}
+
+export const fetchAllRows = (rpc: RpcLike) => async <T>(
   options: GetTableRowsOptions
 ): Promise<T[]> => {
   const mergedOptions = {
     json: true,
-    limit: 9999,
-    ...options
+    limit: -1,
+    ...options,
   };
 
-  let rows: T[] = [];
   let lowerBound = mergedOptions.lower_bound;
 
-  for (let i = 0; i < MAX_PAGINATION_FETCHES; i += 1) {
-    const result = await rpc.get_table_rows({
+  let { rows, more, next_key } = await rpc.get_table_rows({
+    ...mergedOptions,
+    lower_bound: lowerBound,
+  });
+
+  if (more) {
+    const moreRows = await fetchAllRows(rpc)({
       ...mergedOptions,
-      lower_bound: lowerBound
-    });
-    rows = rows.concat(result.rows);
+      lower_bound: next_key,
+    })
 
-    if (!result.more || result.rows.length === 0) break;
-
-    // EOS 2.0 api
-    if (typeof result.next_key !== `undefined`) {
-      lowerBound = result.next_key;
-    } else {
-      throw new Error(`requires EOSIO >= v2`);
-    }
+    rows = rows.concat(moreRows);
   }
 
   return rows;
