@@ -5,74 +5,111 @@ import { decomposeAsset, extAsset2asset, formatAsset } from "./asset";
 import { LENDING_CONTRACT } from "./constants";
 import { fetchBalance, fetchMarkets, fetchShares } from "./tables";
 import { sendTransaction } from "./transaction";
+import { appendLog } from "./logger";
 import BigNumber from "bignumber.js";
+
+const INITIAL_CHUNK_SIZE = 50;
+
+const parseFindLiquidationMemo = (
+  memo: string
+): Liquidation | undefined => {
+  const [
+    status,
+    user,
+    debtAmount,
+    debtExtSymbol,
+    seizeSymbolCode
+  ] = memo.split(` `);
+
+  if (status !== `found`) return undefined;
+
+  // just use the recommendation from the smart contract which returns
+  // the highest debt asset + highest collateral asset
+  const [debtSymbol, debtContract] = debtExtSymbol.split(`@`);
+  const debtAsset = decomposeAsset(`${debtAmount} ${debtSymbol}`);
+
+  if (!debtAsset.amount.gt(0)) return undefined;
+
+  return {
+    user,
+    debtExtAsset: {
+      amount: debtAsset.amount,
+      extSymbol: {
+        contract: debtContract,
+        sym: {
+          code: debtAsset.symbol.code,
+          precision: debtAsset.symbol.precision
+        }
+      }
+    },
+    seizeSymbol: seizeSymbolCode
+  };
+};
+
+// Probe a set of borrowers via the on-chain `findliq` action.
+// The contract always aborts the transaction with an assertion:
+//   - `{find_liquidation}: ...` carries the result (found / notfound)
+//   - any other assertion is a contract-side failure for one of the
+//     borrowers in the batch (e.g. "market does not exist for share symbol")
+// In the latter case we bisect the chunk to isolate the offending borrower
+// and log it, so a single bad account cannot block the whole bot.
+const checkChunk = (api: Api) => async (
+  chunk: string[],
+  authorization: Serialize.Authorization
+): Promise<Liquidation[]> => {
+  if (chunk.length === 0) return [];
+
+  const actions = [
+    {
+      account: LENDING_CONTRACT,
+      authorization: [authorization],
+      name: "findliq",
+      data: {
+        borrowers: chunk
+      }
+    }
+  ];
+
+  try {
+    await sendTransaction(api)(actions);
+    // findliq is expected to always assert; reaching here means no result
+    return [];
+  } catch (error) {
+    const message: string = error ? error.message : ``;
+    const [, memo] = message.split(`{find_liquidation}: `);
+
+    if (memo) {
+      const liquidation = parseFindLiquidationMemo(memo);
+      return liquidation ? [liquidation] : [];
+    }
+
+    // Unexpected assertion from the contract. Bisect to isolate the bad
+    // borrower so the rest of the batch can still be processed.
+    if (chunk.length === 1) {
+      const borrower = chunk[0];
+      const summary = `borrower=${borrower} error=${message.replace(/\s+/g, " ").trim()}`;
+      console.warn(`findliq failed for single borrower: ${summary}`);
+      appendLog("findliq-errors.log", summary);
+      return [];
+    }
+
+    const mid = Math.floor(chunk.length / 2);
+    const left = await checkChunk(api)(chunk.slice(0, mid), authorization);
+    const right = await checkChunk(api)(chunk.slice(mid), authorization);
+    return [...left, ...right];
+  }
+};
 
 export const findLiquidations = (api: Api) => async (
   accounts: string[],
   authorization: Serialize.Authorization
 ): Promise<Liquidation[]> => {
-  // call the check-liquidation action which accruess all debt and checks each user
-  const chunks = chunkFn(accounts, 50); // TODO: adjust this chunk size if timing out
-  const liquidations = [];
+  const chunks = chunkFn(accounts, INITIAL_CHUNK_SIZE);
+  const liquidations: Liquidation[] = [];
 
   for (const chunk of chunks) {
-    const actions = [
-      {
-        account: LENDING_CONTRACT,
-        authorization: [authorization],
-        name: "findliq",
-        data: {
-          borrowers: chunk
-        }
-      }
-    ];
-
-    try {
-      await sendTransaction(api)(actions);
-    } catch (error) {
-      // try to parse error
-      const message: string = error ? error.message : ``;
-      const [, memo] = message.split(`{find_liquidation}: `);
-      if (!memo) {
-        // unknown RPC error, we should always be able to get an assertion error
-        throw error;
-      }
-
-      const [
-        status,
-        user,
-        debtAmount,
-        debtExtSymbol,
-        seizeSymbolCode
-      ] = memo.split(` `);
-
-      if (status === `found`) {
-        // just use the recommendation from the smart contract which returns
-        // the highest debt asset + highest collateral asset
-        // more sophisticated methods would also check if liquidator has
-        // enough balance for this
-        const [debtSymbol, debtContract] = debtExtSymbol.split(`@`);
-        const debtAsset = decomposeAsset(`${debtAmount} ${debtSymbol}`);
-
-        if (debtAsset.amount.gt(0)) {
-          liquidations.push({
-            user,
-            debtExtAsset: {
-              amount: debtAsset.amount,
-              extSymbol: {
-                contract: debtContract,
-                sym: {
-                  code: debtAsset.symbol.code,
-                  precision: debtAsset.symbol.precision
-                }
-              }
-            },
-            seizeSymbol: seizeSymbolCode
-          });
-        }
-      }
-      // otherwise continue the loop for the next chunk
-    }
+    const found = await checkChunk(api)(chunk, authorization);
+    liquidations.push(...found);
   }
 
   return liquidations;
