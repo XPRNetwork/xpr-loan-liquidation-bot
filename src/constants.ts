@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import { Serialize } from "@proton/js";
+import { parseMinLiquidationAmounts } from "./min-liquidation";
 
 dotenv.config();
 
@@ -32,6 +33,17 @@ if (!process.env.ACCOUNTS) {
 }
 export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 export const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+const parseBooleanEnv = (value: string | undefined): boolean => {
+  if (!value) return false;
+  return /^(1|true|yes|on)$/i.test(value.trim());
+};
+
+export const LOG_ONLY_MODE = parseBooleanEnv(process.env.LOG_ONLY_MODE);
+
+export const MIN_LIQUIDATION_AMOUNTS = parseMinLiquidationAmounts(
+  process.env.MIN_LIQUIDATION_AMOUNTS
+);
 
 if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
   console.warn("No TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID provided in .env");
