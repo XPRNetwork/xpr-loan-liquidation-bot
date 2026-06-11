@@ -11,10 +11,13 @@ import {
   BOTS_CONFIG,
   ENDPOINTS,
   LOG_ONLY_MODE,
+  MIN_LIQUIDATION_USD,
+  PRICE_REFRESH_INTERVAL_MS,
   PRIVATE_KEYS,
   TELEGRAM_BOT_TOKEN,
   TELEGRAM_CHAT_ID
 } from "./constants";
+import { initPriceCache } from "./price-cache";
 import {
   findLiquidations,
   getMinLiquidationThresholdMessage,
@@ -127,10 +130,17 @@ const processor = async (authorization: Serialize.Authorization) => {
   processor(authorization);
 };
 
-export const main = () => {
+export const main = async () => {
+  const priceCache = initPriceCache(
+    PRICE_REFRESH_INTERVAL_MS,
+    MIN_LIQUIDATION_USD
+  );
+  await priceCache.refresh();
+  priceCache.start();
+
   for (const account of BOTS_ACCOUNTS) {
     processor(account);
   }
 };
 
-main();
+void main();

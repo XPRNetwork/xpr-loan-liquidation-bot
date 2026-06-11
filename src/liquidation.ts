@@ -2,8 +2,9 @@ import { Api, Serialize } from "@proton/js";
 import chunkFn from "lodash/chunk";
 import { Liquidation, TExtendedAsset } from "./@types/tables";
 import { decomposeAsset, extAsset2asset, formatAsset } from "./asset";
-import { LENDING_CONTRACT, MIN_LIQUIDATION_AMOUNTS } from "./constants";
+import { LENDING_CONTRACT } from "./constants";
 import { getMinLiquidationThresholdMessage as getMinLiquidationThresholdMessageInner } from "./min-liquidation";
+import { getMinLiquidationAmounts } from "./price-cache";
 import { fetchBalance, fetchMarkets, fetchShares } from "./tables";
 import { sendTransaction } from "./transaction";
 import { appendLog } from "./logger";
@@ -15,7 +16,7 @@ export const getMinLiquidationThresholdMessage = (
 ): string | undefined => {
   return getMinLiquidationThresholdMessageInner(
     debtExtAsset,
-    MIN_LIQUIDATION_AMOUNTS
+    getMinLiquidationAmounts()
   );
 };
 

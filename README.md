@@ -30,15 +30,14 @@ Edit `.env` with your values:
 | `ACCOUNTS` | Yes | Comma-separated accounts in `name@permission` format (e.g. `myaccount@active`) |
 | `LENDING_CONTRACT` | Yes | Lending contract account (`lending.loan` on mainnet, `lending` on testnet) |
 | `LOG_ONLY_MODE` | No | If `true`, bot logs liquidation candidates without sending transactions |
-| `MIN_LIQUIDATION_AMOUNTS` | No | Comma-separated per-token minimum liquidation amounts in token units (see `.example.env` for full list; e.g. `XPR:481,XBTC:0.00001646,XUSDC:1`) |
+| `MIN_LIQUIDATION_USD` | No | Target USD value for minimum liquidation thresholds (default: `1`) |
+| `PRICE_REFRESH_INTERVAL_MS` | No | How often to refresh CoinGecko prices used for minimum liquidation thresholds, in milliseconds (default: `3600000`, i.e. 60 minutes) |
 | `TELEGRAM_BOT_TOKEN` | No | Telegram bot token for liquidation notifications |
 | `TELEGRAM_CHAT_ID` | No | Telegram chat ID for liquidation notifications |
 
 If `LOG_ONLY_MODE` is omitted, it defaults to `false` and the bot performs real liquidations.
 
-If `MIN_LIQUIDATION_AMOUNTS` is omitted, built-in defaults are used for all currently supported Metal X lending markets (e.g. `XPR:481`, `XBTC:0.00001646`, `XUSDC:1`) targeting roughly ~$1 liquidation minimums, with stablecoins pinned to `1`. Tokens without a configured minimum are liquidated without a minimum threshold.
-
-To refresh these values from CoinGecko, run `./scripts/update-min-liquidation-amounts.sh` (or `./scripts/update-min-liquidation-amounts.sh --write` to update `.example.env` and `.env`).
+Minimum liquidation thresholds are derived automatically from CoinGecko prices on startup and refreshed every `PRICE_REFRESH_INTERVAL_MS` (default 3600000, i.e. 60 minutes). Each supported lending token targets the USD value configured by `MIN_LIQUIDATION_USD` (default `1`). Tokens without a configured minimum are liquidated without a minimum threshold.
 
 3. Optionally edit `testnet.config.js` or `mainnet.config.js` if running with PM2.
 
