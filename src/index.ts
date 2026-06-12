@@ -10,11 +10,19 @@ import {
   BOTS_ACCOUNTS,
   BOTS_CONFIG,
   ENDPOINTS,
+  LOG_ONLY_MODE,
+  MIN_LIQUIDATION_USD,
+  PRICE_REFRESH_INTERVAL_MS,
   PRIVATE_KEYS,
   TELEGRAM_BOT_TOKEN,
   TELEGRAM_CHAT_ID
 } from "./constants";
-import { findLiquidations, performLiquidation } from "./liquidation";
+import { initPriceCache } from "./price-cache";
+import {
+  findLiquidations,
+  getMinLiquidationThresholdMessage,
+  performLiquidation
+} from "./liquidation";
 import { appendLog } from "./logger";
 import { fetchAllBorrowers } from "./tables";
 
@@ -23,6 +31,10 @@ const api = new Api({
   rpc,
   signatureProvider: new JsSignatureProvider(PRIVATE_KEYS as any)
 });
+
+if (LOG_ONLY_MODE) {
+  console.warn("LOG_ONLY_MODE is enabled. No liquidation transactions will be sent.");
+}
 
 const wait = async (ms: number) =>
   new Promise(resolve => setTimeout(resolve, ms));
@@ -49,6 +61,25 @@ const process = async (authorization: Serialize.Authorization) => {
 
   for (const liquidation of liquidations) {
     const { user, debtExtAsset, seizeSymbol } = liquidation;
+    const thresholdError = getMinLiquidationThresholdMessage(debtExtAsset);
+    if (thresholdError) {
+      const skipSummary = `user=${user} debt=${formatAsset(
+        extAsset2asset(debtExtAsset)
+      )} reason=${thresholdError} bot=${authorization.actor}`;
+      console.log(`Skipping liquidation: ${skipSummary}`);
+      appendLog("skipped-liquidations.log", skipSummary);
+      continue;
+    }
+
+    if (LOG_ONLY_MODE) {
+      const dryRunSummary = `user=${user} debt=${formatAsset(
+        extAsset2asset(debtExtAsset)
+      )} seize=${seizeSymbol} action=would-liquidate bot=${authorization.actor}`;
+      console.log(`LOG-ONLY: ${dryRunSummary}`);
+      appendLog("log-only-liquidations.log", dryRunSummary);
+      continue;
+    }
+
     console.log(`Liquidation in progress`);
     
     try {
@@ -78,6 +109,15 @@ const process = async (authorization: Serialize.Authorization) => {
       // const result = await sendTransaction(api)(actions);
       // return result;
     } catch (e) {
+      if (e?.message?.includes("below minimum liquidation threshold")) {
+        const skipSummary = `user=${user} debt=${formatAsset(
+          extAsset2asset(debtExtAsset)
+        )} reason=${e.message} bot=${authorization.actor}`;
+        console.log(`Skipping liquidation: ${skipSummary}`);
+        appendLog("skipped-liquidations.log", skipSummary);
+        continue;
+      }
+
       console.error("Error Performing Liquidation");
       console.error(e);
     }
@@ -90,10 +130,17 @@ const processor = async (authorization: Serialize.Authorization) => {
   processor(authorization);
 };
 
-export const main = () => {
+export const main = async () => {
+  const priceCache = initPriceCache(
+    PRICE_REFRESH_INTERVAL_MS,
+    MIN_LIQUIDATION_USD
+  );
+  await priceCache.refresh();
+  priceCache.start();
+
   for (const account of BOTS_ACCOUNTS) {
     processor(account);
   }
 };
 
-main();
+void main();

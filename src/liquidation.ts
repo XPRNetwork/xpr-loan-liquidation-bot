@@ -3,12 +3,22 @@ import chunkFn from "lodash/chunk";
 import { Liquidation, TExtendedAsset } from "./@types/tables";
 import { decomposeAsset, extAsset2asset, formatAsset } from "./asset";
 import { LENDING_CONTRACT } from "./constants";
+import { getMinLiquidationThresholdMessage as getMinLiquidationThresholdMessageInner } from "./min-liquidation";
+import { getMinLiquidationAmounts } from "./price-cache";
 import { fetchBalance, fetchMarkets, fetchShares } from "./tables";
 import { sendTransaction } from "./transaction";
 import { appendLog } from "./logger";
-import BigNumber from "bignumber.js";
 
 const INITIAL_CHUNK_SIZE = 50;
+
+export const getMinLiquidationThresholdMessage = (
+  debtExtAsset: TExtendedAsset
+): string | undefined => {
+  return getMinLiquidationThresholdMessageInner(
+    debtExtAsset,
+    getMinLiquidationAmounts()
+  );
+};
 
 const parseFindLiquidationMemo = (
   memo: string
@@ -212,6 +222,15 @@ export const performLiquidation = (api: Api) => async (
   if (adjustedAsset.amount.isGreaterThan(ownUnderlyingBalance.amount)) {
     adjustedAsset.amount = ownUnderlyingBalance.amount;
   }
+
+  const thresholdError = getMinLiquidationThresholdMessage({
+    amount: adjustedAsset.amount,
+    extSymbol: debtExtAsset.extSymbol
+  });
+  if (thresholdError) {
+    throw new Error(`Repay amount ${thresholdError}`);
+  }
+
   console.log(`repaying`, formatAsset(adjustedAsset), 'for', user);
   if (adjustedAsset.amount.isZero()) {
     throw new Error(

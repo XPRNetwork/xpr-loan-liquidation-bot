@@ -16,7 +16,7 @@
     "build": "tsup src/index.ts --format cjs --dts",
     "start:prod": "node dist/index.js",
     "lint": "tsc --noEmit",
-    "test": "echo \"No tests configured\""
+    "test": "tsx --test src/*.test.ts"
   },
   "author": "Metallicus",
   "module": "dist/server.esm.js",
