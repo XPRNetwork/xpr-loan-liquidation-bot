@@ -2,14 +2,25 @@ import { Api, Serialize } from "@proton/js";
 import chunkFn from "lodash/chunk";
 import { Liquidation, TExtendedAsset } from "./@types/tables";
 import { decomposeAsset, extAsset2asset, formatAsset } from "./asset";
-import { LENDING_CONTRACT } from "./constants";
+import { BOTS_CONFIG, LENDING_CONTRACT } from "./constants";
 import { getMinLiquidationThresholdMessage as getMinLiquidationThresholdMessageInner } from "./min-liquidation";
 import { getMinLiquidationAmounts } from "./price-cache";
 import { fetchBalance, fetchMarkets, fetchShares } from "./tables";
 import { sendTransaction } from "./transaction";
 import { appendLog } from "./logger";
+import { rotateValues } from "./scan-utils";
 
-const INITIAL_CHUNK_SIZE = 50;
+export type LiquidationScanStats = {
+  borrowerCount: number;
+  chunkCount: number;
+  candidateCount: number;
+  elapsedMs: number;
+  rotation: number;
+};
+
+let scanRotation = 0;
+let cachedMarkets: any[] | undefined;
+let cachedMarketsExpiresAt = 0;
 
 export const getMinLiquidationThresholdMessage = (
   debtExtAsset: TExtendedAsset
@@ -114,15 +125,66 @@ export const findLiquidations = (api: Api) => async (
   accounts: string[],
   authorization: Serialize.Authorization
 ): Promise<Liquidation[]> => {
-  const chunks = chunkFn(accounts, INITIAL_CHUNK_SIZE);
   const liquidations: Liquidation[] = [];
 
-  for (const chunk of chunks) {
-    const found = await checkChunk(api)(chunk, authorization);
-    liquidations.push(...found);
-  }
+  await scanLiquidations(api)(accounts, authorization, async liquidation => {
+    liquidations.push(liquidation);
+  });
 
   return liquidations;
+};
+
+export const scanLiquidations = (api: Api) => async (
+  accounts: string[],
+  authorization: Serialize.Authorization,
+  onLiquidation: (liquidation: Liquidation) => Promise<void>
+): Promise<LiquidationScanStats> => {
+  const startedAt = Date.now();
+  const chunks = chunkFn(accounts, BOTS_CONFIG.chunkSize);
+  const rotation = chunks.length === 0 ? 0 : scanRotation % chunks.length;
+  const rotatedChunks = rotateValues(chunks, rotation);
+  scanRotation = chunks.length === 0 ? 0 : (scanRotation + 1) % chunks.length;
+  let nextChunkIndex = 0;
+  let candidateCount = 0;
+
+  const worker = async () => {
+    while (nextChunkIndex < rotatedChunks.length) {
+      const chunkIndex = nextChunkIndex++;
+      const found = await checkChunk(api)(
+        rotatedChunks[chunkIndex],
+        authorization
+      );
+
+      for (const liquidation of found) {
+        candidateCount++;
+        await onLiquidation(liquidation);
+      }
+    }
+  };
+
+  const workerCount = Math.min(
+    BOTS_CONFIG.scanConcurrency,
+    rotatedChunks.length
+  );
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+  return {
+    borrowerCount: accounts.length,
+    chunkCount: chunks.length,
+    candidateCount,
+    elapsedMs: Date.now() - startedAt,
+    rotation
+  };
+};
+
+const getMarkets = async (api: Api): Promise<any[]> => {
+  if (cachedMarkets && Date.now() < cachedMarketsExpiresAt) {
+    return cachedMarkets;
+  }
+
+  cachedMarkets = await fetchMarkets(api)();
+  cachedMarketsExpiresAt = Date.now() + BOTS_CONFIG.marketCacheTtlMs;
+  return cachedMarkets;
 };
 
 export const redeemShare = (api: Api) => async (
@@ -186,7 +248,7 @@ export const performLiquidation = (api: Api) => async (
   };
 
   // Fetch markets
-  const markets = await fetchMarkets(api)();
+  const markets = await getMarkets(api);
   const market = markets.find(
     market =>
       market.underlying_symbol.sym.code === debtExtAsset.extSymbol.sym.code &&
@@ -200,12 +262,14 @@ export const performLiquidation = (api: Api) => async (
 
   // redeem if we own shares of this underlying
   // as bot ends up with lots of seized collateral
-  const shares = await fetchShares(api)(authorization.actor);
-  const share = shares.find(
-    s => s.extSymbol.sym.code === market.share_symbol.sym.code
-  );
-  if (share && share.amount.isGreaterThan(0)) {
-    await redeemShare(api)(share, authorization);
+  if (BOTS_CONFIG.redeemBeforeLiquidation) {
+    const shares = await fetchShares(api)(authorization.actor);
+    const share = shares.find(
+      s => s.extSymbol.sym.code === market.share_symbol.sym.code
+    );
+    if (share && share.amount.isGreaterThan(0)) {
+      await redeemShare(api)(share, authorization);
+    }
   }
 
   const ownUnderlyingBalance = await fetchBalance(api)(
@@ -238,8 +302,9 @@ export const performLiquidation = (api: Api) => async (
     );
   }
 
-  const actions = [
-    {
+  const actions: Serialize.Action[] = [];
+  if (BOTS_CONFIG.enterMarketsEachLiquidation) {
+    actions.push({
       account: LENDING_CONTRACT,
       authorization: [authorization],
       name: "entermarkets",
@@ -248,8 +313,9 @@ export const performLiquidation = (api: Api) => async (
         user: authorization.actor,
         markets: [market.share_symbol.sym.code, seizeSymbol]
       }
-    },
-    {
+    });
+  }
+  actions.push({
       account: debtExtAsset.extSymbol.contract,
       authorization: [authorization],
       name: "transfer",
@@ -259,8 +325,7 @@ export const performLiquidation = (api: Api) => async (
         quantity: formatAsset(adjustedAsset),
         memo: `liquidate,${user},${seizeSymbol}`
       }
-    }
-  ];
+    });
   //console.dir(actions, { depth: null })
   return await sendTransaction(api)(actions);
 };

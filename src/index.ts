@@ -19,9 +19,9 @@ import {
 } from "./constants";
 import { initPriceCache } from "./price-cache";
 import {
-  findLiquidations,
   getMinLiquidationThresholdMessage,
-  performLiquidation
+  performLiquidation,
+  scanLiquidations
 } from "./liquidation";
 import { appendLog } from "./logger";
 import { fetchAllBorrowers } from "./tables";
@@ -33,101 +33,174 @@ const api = new Api({
 });
 
 if (LOG_ONLY_MODE) {
-  console.warn("LOG_ONLY_MODE is enabled. No liquidation transactions will be sent.");
+  console.warn(
+    "LOG_ONLY_MODE is enabled. Candidate probes are still signed and sent, but liquidation transactions will not be sent."
+  );
 }
 
 const wait = async (ms: number) =>
   new Promise(resolve => setTimeout(resolve, ms));
 
-const process = async (authorization: Serialize.Authorization) => {
-  let liquidations: Liquidation[] = [];
+const liquidationKey = (liquidation: Liquidation): string =>
+  [
+    liquidation.user,
+    liquidation.debtExtAsset.extSymbol.contract,
+    liquidation.debtExtAsset.extSymbol.sym.code,
+    liquidation.seizeSymbol
+  ].join(":");
+
+const sendTelegramNotification = (message: string) => {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+
+  const body = new URLSearchParams({
+    chat_id: TELEGRAM_CHAT_ID,
+    text: message
+  });
+  void fetch(
+    `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+    { method: "POST", body }
+  ).catch(error => console.warn("Telegram notification failed", error));
+};
+
+const processCandidate = (api: Api) => async (
+  liquidation: Liquidation,
+  authorization: Serialize.Authorization,
+  inFlight: Set<string>,
+  recentAttempts: Map<string, number>
+) => {
+  const { user, debtExtAsset, seizeSymbol } = liquidation;
+  const key = liquidationKey(liquidation);
+  const now = Date.now();
+  const recentAttempt = recentAttempts.get(key);
+
+  appendLog(
+    "available-liquidations.log",
+    `user=${user} debt=${formatAsset(extAsset2asset(debtExtAsset))} seize=${seizeSymbol} bot=${authorization.actor}`
+  );
+  appendLog(
+    "race-metrics.log",
+    `event=detected user=${user} debt=${formatAsset(extAsset2asset(debtExtAsset))} seize=${seizeSymbol} bot=${authorization.actor}`
+  );
+
+  if (
+    inFlight.has(key) ||
+    (recentAttempt !== undefined &&
+      now - recentAttempt < BOTS_CONFIG.recentAttemptTtlMs)
+  ) {
+    appendLog(
+      "race-metrics.log",
+      `event=deduplicated user=${user} key=${key} bot=${authorization.actor}`
+    );
+    return;
+  }
+
+  const thresholdError = getMinLiquidationThresholdMessage(debtExtAsset);
+  if (thresholdError) {
+    const skipSummary = `user=${user} debt=${formatAsset(
+      extAsset2asset(debtExtAsset)
+    )} reason=${thresholdError} bot=${authorization.actor}`;
+    console.log(`Skipping liquidation: ${skipSummary}`);
+    appendLog("skipped-liquidations.log", skipSummary);
+    return;
+  }
+
+  if (LOG_ONLY_MODE) {
+    const dryRunSummary = `user=${user} debt=${formatAsset(
+      extAsset2asset(debtExtAsset)
+    )} seize=${seizeSymbol} action=would-liquidate bot=${authorization.actor}`;
+    console.log(`LOG-ONLY: ${dryRunSummary}`);
+    appendLog("log-only-liquidations.log", dryRunSummary);
+    return;
+  }
+
+  inFlight.add(key);
+  recentAttempts.set(key, now);
+  appendLog(
+    "race-metrics.log",
+    `event=submitting user=${user} detected_to_submit_ms=${Date.now() - now} bot=${authorization.actor}`
+  );
+
+  try {
+    const txResult = await performLiquidation(api)(
+      user,
+      debtExtAsset,
+      seizeSymbol,
+      authorization
+    );
+    const liquidationInfo = `Liquidated ${user} for ${seizeSymbol} (using ~${formatAsset(
+      extAsset2asset(debtExtAsset)
+    )})`;
+    console.log(liquidationInfo, txResult.transaction_id);
+    appendLog(
+      "completed-liquidations.log",
+      `user=${user} debt=${formatAsset(extAsset2asset(debtExtAsset))} seize=${seizeSymbol} tx=${txResult.transaction_id} bot=${authorization.actor}`
+    );
+    appendLog(
+      "race-metrics.log",
+      `event=confirmed user=${user} elapsed_ms=${Date.now() - now} tx=${txResult.transaction_id} bot=${authorization.actor}`
+    );
+    sendTelegramNotification(liquidationInfo);
+  } catch (error) {
+    if (error?.message?.includes("below minimum liquidation threshold")) {
+      const skipSummary = `user=${user} debt=${formatAsset(
+        extAsset2asset(debtExtAsset)
+      )} reason=${error.message} bot=${authorization.actor}`;
+      console.log(`Skipping liquidation: ${skipSummary}`);
+      appendLog("skipped-liquidations.log", skipSummary);
+    } else {
+      console.error("Error Performing Liquidation");
+      console.error(error);
+      appendLog(
+        "race-metrics.log",
+        `event=failed user=${user} elapsed_ms=${Date.now() - now} error=${String(error?.message ?? error).replace(/\s+/g, " ")} bot=${authorization.actor}`
+      );
+    }
+  } finally {
+    inFlight.delete(key);
+  }
+};
+
+const processAccount = async (
+  authorization: Serialize.Authorization,
+  inFlight: Set<string>,
+  recentAttempts: Map<string, number>
+) => {
+  const cutoff = Date.now() - BOTS_CONFIG.recentAttemptTtlMs;
+  for (const [key, attemptedAt] of recentAttempts) {
+    if (attemptedAt < cutoff) recentAttempts.delete(key);
+  }
 
   try {
     const borrowers = await fetchAllBorrowers(api);
     const users = borrowers.filter(user => user !== authorization.actor);
-
-    liquidations = await findLiquidations(api)(users, authorization);
-
-    for (const liq of liquidations) {
-      appendLog(
-        "available-liquidations.log",
-        `user=${liq.user} debt=${formatAsset(extAsset2asset(liq.debtExtAsset))} seize=${liq.seizeSymbol} bot=${authorization.actor}`
-      );
-    }
+    const stats = await scanLiquidations(api)(
+      users,
+      authorization,
+      liquidation =>
+        processCandidate(api)(
+          liquidation,
+          authorization,
+          inFlight,
+          recentAttempts
+        )
+    );
+    appendLog(
+      "race-metrics.log",
+      `event=scan-complete borrowers=${stats.borrowerCount} chunks=${stats.chunkCount} candidates=${stats.candidateCount} elapsed_ms=${stats.elapsedMs} rotation=${stats.rotation} concurrency=${BOTS_CONFIG.scanConcurrency} bot=${authorization.actor}`
+    );
   } catch (e) {
     console.error("Error in fetching Liquidations");
     console.error(e);
   }
-
-  for (const liquidation of liquidations) {
-    const { user, debtExtAsset, seizeSymbol } = liquidation;
-    const thresholdError = getMinLiquidationThresholdMessage(debtExtAsset);
-    if (thresholdError) {
-      const skipSummary = `user=${user} debt=${formatAsset(
-        extAsset2asset(debtExtAsset)
-      )} reason=${thresholdError} bot=${authorization.actor}`;
-      console.log(`Skipping liquidation: ${skipSummary}`);
-      appendLog("skipped-liquidations.log", skipSummary);
-      continue;
-    }
-
-    if (LOG_ONLY_MODE) {
-      const dryRunSummary = `user=${user} debt=${formatAsset(
-        extAsset2asset(debtExtAsset)
-      )} seize=${seizeSymbol} action=would-liquidate bot=${authorization.actor}`;
-      console.log(`LOG-ONLY: ${dryRunSummary}`);
-      appendLog("log-only-liquidations.log", dryRunSummary);
-      continue;
-    }
-
-    console.log(`Liquidation in progress`);
-    
-    try {
-      const txResult = await performLiquidation(api)(
-        user,
-        debtExtAsset,
-        seizeSymbol,
-        authorization
-      );
-      const liquidationInfo = `Liquidated ${user} for ${seizeSymbol} (using ~${formatAsset(
-        extAsset2asset(debtExtAsset)
-      )})`;
-      console.log(liquidationInfo, txResult.transaction_id);
-
-      appendLog(
-        "completed-liquidations.log",
-        `user=${user} debt=${formatAsset(extAsset2asset(debtExtAsset))} seize=${seizeSymbol} tx=${txResult.transaction_id} bot=${authorization.actor}`
-      );
-
-      if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
-        const response = await fetch(
-          `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHAT_ID}&text=${liquidationInfo}`
-        );
-        const body = await response.json();
-      }
-
-      // const result = await sendTransaction(api)(actions);
-      // return result;
-    } catch (e) {
-      if (e?.message?.includes("below minimum liquidation threshold")) {
-        const skipSummary = `user=${user} debt=${formatAsset(
-          extAsset2asset(debtExtAsset)
-        )} reason=${e.message} bot=${authorization.actor}`;
-        console.log(`Skipping liquidation: ${skipSummary}`);
-        appendLog("skipped-liquidations.log", skipSummary);
-        continue;
-      }
-
-      console.error("Error Performing Liquidation");
-      console.error(e);
-    }
-  }
 };
 
 const processor = async (authorization: Serialize.Authorization) => {
-  await process(authorization);
-  await wait(BOTS_CONFIG.waitTime);
-  processor(authorization);
+  const inFlight = new Set<string>();
+  const recentAttempts = new Map<string, number>();
+  while (true) {
+    await processAccount(authorization, inFlight, recentAttempts);
+    await wait(BOTS_CONFIG.waitTime);
+  }
 };
 
 export const main = async () => {

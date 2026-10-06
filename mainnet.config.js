@@ -1,10 +1,11 @@
 const endpoints = [
+  "http://127.0.0.1:8889",
   "https://rpc.api.mainnet.metalx.com",
   "https://proton.eosusa.io",
 ]
 
 const accounts = [
-  'liquidator11@active',
+  'loanreaper@active',
 ]
 
 module.exports = {
@@ -17,8 +18,16 @@ module.exports = {
         env: {
           'CHAIN': 'proton',
           'ENDPOINTS': endpoints.join(','),
+          'PREFERRED_ENDPOINT': process.env.PREFERRED_ENDPOINT || endpoints[0],
           'ACCOUNTS': accounts.join(','),
-          "LENDING_CONTRACT": 'lending.loan'
+          "LENDING_CONTRACT": 'lending.loan',
+          'SCAN_CONCURRENCY': process.env.SCAN_CONCURRENCY || '4',
+          'SCAN_WAIT_MS': process.env.SCAN_WAIT_MS || '1000',
+          'REDEEM_BEFORE_LIQUIDATION': 'false',
+          'ENTER_MARKETS_EACH_LIQUIDATION': 'true',
+          'USE_LAST_IRREVERSIBLE': 'false',
+          'TX_BLOCKS_BEHIND': '3',
+          'TX_EXPIRE_SECONDS': '30'
         }
       }
     ]

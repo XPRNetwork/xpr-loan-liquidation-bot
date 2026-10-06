@@ -1,4 +1,5 @@
 import { Api, Serialize } from "@proton/js";
+import { TRANSACTION_CONFIG } from "./constants";
 
 export const sendTransaction = (api: Api) => async (
   actions: Serialize.Action[]
@@ -7,8 +8,10 @@ export const sendTransaction = (api: Api) => async (
     const result = await api.transact(
       { actions },
       {
-        useLastIrreversible: true,
-        expireSeconds: 400
+        ...(TRANSACTION_CONFIG.useLastIrreversible
+          ? { useLastIrreversible: true }
+          : { blocksBehind: TRANSACTION_CONFIG.blocksBehind }),
+        expireSeconds: TRANSACTION_CONFIG.expireSeconds
       }
     );
     return result as { transaction_id: string; processed: any };
